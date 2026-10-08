@@ -12,7 +12,7 @@
 | 1 | OpenSSL 相关内容实践（逐项 git commit） | 5' | ⬜ | `docs/01-openssl命令实践.md` |
 | 2 | GmSSL 相关内容实践（逐项 git commit） | 5' | ⬜ | `docs/02-gmssl命令实践.md` |
 | 3 | OpenSSL 命令实现带签名的数字信封（Alice 发 → Bob 收） | 10' | ⬜ | `docs/03-数字信封-openssl.md` |
-| 4 | GmSSL 命令实现带签名的数字信封（Bob 发 → Alice 收） | 10' | ⬜ | `docs/04-数字信封-gmssl.md` |
+| 4 | GmSSL 命令实现带签名的数字信封（Bob 发 → Alice 收） | 10' | ✅ | `docs/04-数字信封-gmssl.md`（脚本 `scripts/task4-envelope-gmssl.sh`） |
 | 5 | gitee/github 课程项目链接 + `git log` 结果 | — | ⬜ | `README.md` 末节 |
 | 6 | 实践过程 Markdown + 转化 PDF | — | ⬜ | `README.md` + 根目录 PDF |
 
