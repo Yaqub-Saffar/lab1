@@ -1,0 +1,6 @@
+~$*
+*.swp
+_wip/
+artifacts/
+*.key
+*.pem
