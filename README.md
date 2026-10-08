@@ -58,7 +58,9 @@
 
 ## 课程项目链接
 
-（待仓库创建后回填）
+- GitHub 仓库：`https://github.com/Yaqub-Saffar/lab1`
+- 提交物：README + `docs/`（实践命令与反思）+ `scripts/`（复现脚本）+ `screenshots/`
+- ⚠️ `artifacts/`、`_wip/`、`*.key` 被 `.gitignore` 排除，密钥/过程物不入库
 
 ## git log 运行结果
 
