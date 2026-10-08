@@ -51,6 +51,38 @@ $ wc -c alice/C.txt alice/KC.bin alice/S1.bin bob/C.txt bob/KC.bin bob/S1.bin
 - 会话密钥 `k=622225f42551e9fee2a9156b700cc5a9`（发送方存 `alice/k.txt` 备核，见 3.2）。
 - 签名对象是**密文 C**（题面 `Sm2Sign(SKa,C)`），不是明文——验签时点必须一致。
 
-## 3.2 Bob 侧：验签 + 解信封（⬜ 待实测）
+## 3.2 Bob 侧：验签 + 解信封（✅ 实测）
 
-## 3.3 问题与反思（⬜ 收侧完成后再写）
+```
+$ cat bob/pka.pub
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoEcz1UBgi0DQgAESMNMMJOg+dJEe7bdPDxGTtbdLavq
+MSwJK1tft7lv7obe/xjQ53vVSq5H7GbsxtoAqRoob4qXPexFjeqbyZTuyw==
+-----END PUBLIC KEY-----
+$ openssl pkeyutl -verify -in bob/C.txt -pubin -inkey bob/pka.pub -rawin -digest sm3 -sigfile bob/S1.bin
+Signature Verified Successfully
+$ openssl pkeyutl -decrypt -in bob/KC.bin -inkey bob/skb.key -out bob/k_recv.txt
+$ cat bob/k_recv.txt
+622225f42551e9fee2a9156b700cc5a9
+$ diff alice/k.txt bob/k_recv.txt && echo 'k一致：信封里的会话密钥被Bob正确取回'
+k一致：信封里的会话密钥被Bob正确取回
+$ krecv=$(cat bob/k_recv.txt)
+$ openssl enc -sm4-cbc -d -K $krecv -iv 00000000000000000000000000000000 -in bob/C.txt -out bob/recv_plain.txt
+$ cmp alice/plain.txt bob/recv_plain.txt && echo '信封闭环：Bob解出明文=Alice原文'
+信封闭环：Bob解出明文=Alice原文
+```
+
+对照题面 Bob 的三步：`Sm2Verify(PKa, C, S1)` 成功 → `Sm2Dec(Skb, KC)=k`
+（与 Alice 侧 `alice/k.txt` **逐字符一致**）→ `Sm4Dec(k, C)=P`（与 `alice/plain.txt` 逐字节一致）。
+
+## 3.3 问题与反思
+
+1. **协议未定义的两个点，本实验显式补全并写死**：① SM4-CBC 的 IV 固定全零；
+   ② 公钥 `pka.pub` 走「协议外提前交换」。两条都写明，不靠心照不宣，同学/老师复核可复现。
+2. **四类密钥动作的方向性**：加密用**对方**公钥（KC 用 Bob 公钥），解密用**自己**私钥
+   （Bob 解 KC）；签名用**自己**私钥（S1 用 Alice 私钥），验签用**对方**公钥。
+   放反任何一步立刻失败——这是非对称密码的两两互补。
+3. **信封闭环的双重验证**：`diff k` 证明「会话密钥正确交达对方」，
+   `cmp plain` 证明「明文内容到对方」。两处都一致才叫信封闭合（记录里两行 echo 都打出了）。
+4. 签名对象是密文 C 而非明文：Kerckhoffs 原则下签名不暴露明文内容，同时也防 C→P' 的
+   替换攻击。任务① 篡改负例（1.5/2.3）已验证：C 或 S1 任一被改，验签即失败。
