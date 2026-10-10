@@ -1,15 +1,24 @@
-﻿# 03 路 浠诲姟鈶?鏁板瓧淇″皝锛歄penSSL 瀹炵幇锛孉lice 鈫?Bob锛?0 鍒嗭級
+# 03 · 任务③ 数字信封：OpenSSL 实现，Alice → Bob（10 分）
 
-> 棰橀潰锛堣妭閫夎嚜瀹為獙瑕佹眰锛夛細鍙岀 SM2 鍏挜浣撳埗寤虹珛锛屾槑鏂囦负鏈汉濮撳悕瀛﹀彿锛?> `k=rand(16B)`锛宍C=Sm4Enc(k,P)`锛宍KC=Sm2Enc(PKb,k)`锛宍S1=Sm2Sign(SKa,C)`锛?> 鍙戦€?`C||KC||S1`锛涙帴鏀剁楠岃瘉绛惧悕銆佽В KC 鍙?k銆佽В C 寰楁槑鏂囥€?> 鍙屾柟鍚勬寔绉侀挜锛屽叕閽ュ叕寮€锛涙湰瀹為獙 IV 鍦ㄥ崗璁湭瀹氫箟澶?*鏄惧紡鍥哄畾鍏ㄩ浂**骞惰褰曘€?
-- **鍒嗗伐**锛欰lice = 20241422 绌嗗紙娑碉紙鏈汉锛夛紝Bob = 20241412 榄忕户鍗氾紙鎼。锛夈€?- **妯℃嫙鏂瑰紡**锛氱幇鍦轰互 `alice/`銆乣bob/` 涓や釜鐩綍 + `cp` 妯℃嫙淇￠亾浼犺緭锛?  鍏挜 `pka.pub` 缁忋€屽崗璁鎻愬墠浜ゆ崲銆嶆斁鍏?Bob 鐩綍锛堢湡瀹炲満鏅悓鐞嗭紝鍏挜鏈氨涓嶄繚瀵嗭級銆?- 寮曟搸锛歄penSSL 3.5.6銆備换鍔♀憼 宸查€愪釜楠岃瘉 SM2/SM3/SM4 鍚勫師瀛愭搷浣滐紝姝ゅ鐩存帴鎼垚淇″皝銆?
-## 3.1 Alice 渚э細瀵嗛挜瀵?+ 鍔犲瘑鎵撳寘锛堚渽 瀹炴祴锛?
+> 题面（节选自实验要求）：双端 SM2 公钥体制建立，明文为本人姓名学号；
+> `k=rand(16B)`，`C=Sm4Enc(k,P)`，`KC=Sm2Enc(PKb,k)`，`S1=Sm2Sign(SKa,C)`，
+> 发送 `C||KC||S1`；接收端验证签名、解 KC 取 k、解 C 得明文。
+> 双方各持私钥，公钥公开；本实验 IV 在协议未定义处**显式固定全零**并记录。
+
+- **分工**：Alice = 20241422 穆弈涵（本人），Bob = 20241412 魏继博（搭档）。
+- **模拟方式**：现场以 `alice/`、`bob/` 两个目录 + `cp` 模拟信道传输；
+  公钥 `pka.pub` 经「协议外提前交换」放入 Bob 目录（真实场景同理，公钥本就不保密）。
+- 引擎：OpenSSL 3.5.6。任务① 已逐个验证 SM2/SM3/SM4 各原子操作，此处直接搭成信封。
+
+## 3.1 Alice 侧：密钥对 + 加密打包（✅ 实测）
+
 ```
 $ mkdir -p alice bob
 $ openssl genpkey -algorithm SM2 -out alice/ska.key
 $ openssl pkey -in alice/ska.key -pubout -out alice/pka.pub
 $ openssl genpkey -algorithm SM2 -out bob/skb.key
 $ openssl pkey -in bob/skb.key -pubout -out bob/pkb.pub
-$ echo -n '20241422绌嗗紙娑? > alice/plain.txt; wc -c alice/plain.txt
+$ echo -n '20241422穆弈涵' > alice/plain.txt; wc -c alice/plain.txt
 17 alice/plain.txt
 $ k=$(openssl rand -hex 16); echo "k=$k"
 k=622422ca19bc93c88d234d71b621b8cf
@@ -18,7 +27,8 @@ $ openssl enc -sm4-cbc -K $k -iv $IV0 -in alice/plain.txt -out alice/C.txt
 $ echo -n "$k" > alice/k.txt
 $ openssl pkeyutl -encrypt -in alice/k.txt -inkey bob/pkb.pub -pubin -out alice/KC.bin
 $ openssl pkeyutl -sign -in alice/C.txt -inkey alice/ska.key -rawin -digest sm3 -out alice/S1.bin
-$ cp alice/pka.pub bob/          # 鍏挜鎻愬墠浜ゆ崲锛堝崗璁锛?$ cp alice/C.txt alice/KC.bin alice/S1.bin bob/   # 淇￠亾浼犺緭 C||KC||S1
+$ cp alice/pka.pub bob/          # 公钥提前交换（协议外）
+$ cp alice/C.txt alice/KC.bin alice/S1.bin bob/   # 信道传输 C||KC||S1
 $ wc -c alice/C.txt alice/KC.bin alice/S1.bin bob/C.txt bob/KC.bin bob/S1.bin
  32 alice/C.txt
 139 alice/KC.bin
@@ -26,20 +36,23 @@ $ wc -c alice/C.txt alice/KC.bin alice/S1.bin bob/C.txt bob/KC.bin bob/S1.bin
  32 bob/C.txt
 139 bob/KC.bin
  71 bob/S1.bin
-484 鎬昏
+484 总计
 ```
 
-閫愰」绠楁硶涓庡昂瀵告潵鍘嗭細
+逐项算法与尺寸来历：
 
-| 鍒嗛噺 | 鐢熸垚鍛戒护 | 灏哄 | 鏉ュ巻 |
+| 分量 | 生成命令 | 尺寸 | 来历 |
 | --- | --- | --- | --- |
-| plain.txt | `echo -n '20241422绌嗗紙娑?` | 17 B | 瀛﹀彿 8 鏁板瓧 + 濮撳悕 3 姹夊瓧脳3 瀛楄妭 = 8+9 |
-| C | SM4-CBC(k, IV=0, plain) | 32 B | PKCS#7锛?7 % 16 = 1 鈫?琛?15 瀛楄妭 0x0F |
-| KC | SM2Enc(pkb, k.txt) | 139 B | 鏄庢枃鏄?32 瀛?hex 鏄庢枃 鈫?姣?16B 鏄庢枃鏃?123)澶?16 |
-| S1 | SM2Sign(ska, C) | 71 B | ASN.1 DER 鐨勪袱涓?256-bit 鏁存暟 + 缁撴瀯澶?|
+| plain.txt | `echo -n '20241422穆弈涵'` | 17 B | 学号 8 数字 + 姓名 3 汉字×3 字节 = 8+9 |
+| C | SM4-CBC(k, IV=0, plain) | 32 B | PKCS#7：17 % 16 = 1 → 补 15 字节 0x0F |
+| KC | SM2Enc(pkb, k.txt) | 139 B | 明文是 32 字 hex 明文 → 比 16B 明文时(123)多 16 |
+| S1 | SM2Sign(ska, C) | 71 B | ASN.1 DER 的两个 256-bit 整数 + 结构头 |
 
-- 浼氳瘽瀵嗛挜 `k=622422ca19bc93c88d234d71b621b8cf`锛堝彂閫佹柟瀛?`alice/k.txt` 澶囨牳锛岃 3.2锛夈€?- 绛惧悕瀵硅薄鏄?*瀵嗘枃 C**锛堥闈?`Sm2Sign(SKa,C)`锛夛紝涓嶆槸鏄庢枃鈥斺€旈獙绛炬椂鐐瑰繀椤讳竴鑷淬€?
-## 3.2 Bob 渚э細楠岀 + 瑙ｄ俊灏侊紙鉁?瀹炴祴锛?
+- 会话密钥 `k=622422ca19bc93c88d234d71b621b8cf`（发送方存 `alice/k.txt` 备核，见 3.2）。
+- 签名对象是**密文 C**（题面 `Sm2Sign(SKa,C)`），不是明文——验签时点必须一致。
+
+## 3.2 Bob 侧：验签 + 解信封（✅ 实测）
+
 ```
 $ cat bob/pka.pub
 -----BEGIN PUBLIC KEY-----
@@ -51,18 +64,25 @@ Signature Verified Successfully
 $ openssl pkeyutl -decrypt -in bob/KC.bin -inkey bob/skb.key -out bob/k_recv.txt
 $ cat bob/k_recv.txt
 622422ca19bc93c88d234d71b621b8cf
-$ diff alice/k.txt bob/k_recv.txt && echo 'k涓€鑷达細淇″皝閲岀殑浼氳瘽瀵嗛挜琚獴ob姝ｇ‘鍙栧洖'
-k涓€鑷达細淇″皝閲岀殑浼氳瘽瀵嗛挜琚獴ob姝ｇ‘鍙栧洖
+$ diff alice/k.txt bob/k_recv.txt && echo 'k一致：信封里的会话密钥被Bob正确取回'
+k一致：信封里的会话密钥被Bob正确取回
 $ krecv=$(cat bob/k_recv.txt)
 $ openssl enc -sm4-cbc -d -K $krecv -iv 00000000000000000000000000000000 -in bob/C.txt -out bob/recv_plain.txt
-$ cmp alice/plain.txt bob/recv_plain.txt && echo '淇″皝闂幆锛欱ob瑙ｅ嚭鏄庢枃=Alice鍘熸枃'
-淇″皝闂幆锛欱ob瑙ｅ嚭鏄庢枃=Alice鍘熸枃
+$ cmp alice/plain.txt bob/recv_plain.txt && echo '信封闭环：Bob解出明文=Alice原文'
+信封闭环：Bob解出明文=Alice原文
 ```
 
-瀵圭収棰橀潰 Bob 鐨勪笁姝ワ細`Sm2Verify(PKa, C, S1)` 鎴愬姛 鈫?`Sm2Dec(Skb, KC)=k`
-锛堜笌 Alice 渚?`alice/k.txt` **閫愬瓧绗︿竴鑷?*锛夆啋 `Sm4Dec(k, C)=P`锛堜笌 `alice/plain.txt` 閫愬瓧鑺備竴鑷达級銆?
-## 3.3 闂涓庡弽鎬?
-1. **鍗忚鏈畾涔夌殑涓や釜鐐癸紝鏈疄楠屾樉寮忚ˉ鍏ㄥ苟鍐欐**锛氣憼 SM4-CBC 鐨?IV 鍥哄畾鍏ㄩ浂锛?   鈶?鍏挜 `pka.pub` 璧般€屽崗璁鎻愬墠浜ゆ崲銆嶃€備袱鏉￠兘鍐欐槑锛屼笉闈犲績鐓т笉瀹ｏ紝鍚屽/鑰佸笀澶嶆牳鍙鐜般€?2. **鍥涚被瀵嗛挜鍔ㄤ綔鐨勬柟鍚戞€?*锛氬姞瀵嗙敤**瀵规柟**鍏挜锛圞C 鐢?Bob 鍏挜锛夛紝瑙ｅ瘑鐢?*鑷繁**绉侀挜
-   锛圔ob 瑙?KC锛夛紱绛惧悕鐢?*鑷繁**绉侀挜锛圫1 鐢?Alice 绉侀挜锛夛紝楠岀鐢?*瀵规柟**鍏挜銆?   鏀惧弽浠讳綍涓€姝ョ珛鍒诲け璐モ€斺€旇繖鏄潪瀵圭О瀵嗙爜鐨勪袱涓や簰琛ャ€?3. **淇″皝闂幆鐨勫弻閲嶉獙璇?*锛歚diff k` 璇佹槑銆屼細璇濆瘑閽ユ纭氦杈惧鏂广€嶏紝
-   `cmp plain` 璇佹槑銆屾槑鏂囧唴瀹瑰埌瀵规柟銆嶃€備袱澶勯兘涓€鑷存墠鍙俊灏侀棴鍚堬紙璁板綍閲屼袱琛?echo 閮芥墦鍑轰簡锛夈€?4. 绛惧悕瀵硅薄鏄瘑鏂?C 鑰岄潪鏄庢枃锛欿erckhoffs 鍘熷垯涓嬬鍚嶄笉鏆撮湶鏄庢枃鍐呭锛屽悓鏃朵篃闃?C鈫扨' 鐨?   鏇挎崲鏀诲嚮銆備换鍔♀憼 绡℃敼璐熶緥锛?.5/2.3锛夊凡楠岃瘉锛欳 鎴?S1 浠讳竴琚敼锛岄獙绛惧嵆澶辫触銆
+对照题面 Bob 的三步：`Sm2Verify(PKa, C, S1)` 成功 → `Sm2Dec(Skb, KC)=k`
+（与 Alice 侧 `alice/k.txt` **逐字符一致**）→ `Sm4Dec(k, C)=P`（与 `alice/plain.txt` 逐字节一致）。
 
+## 3.3 问题与反思
+
+1. **协议未定义的两个点，本实验显式补全并写死**：① SM4-CBC 的 IV 固定全零；
+   ② 公钥 `pka.pub` 走「协议外提前交换」。两条都写明，不靠心照不宣，同学/老师复核可复现。
+2. **四类密钥动作的方向性**：加密用**对方**公钥（KC 用 Bob 公钥），解密用**自己**私钥
+   （Bob 解 KC）；签名用**自己**私钥（S1 用 Alice 私钥），验签用**对方**公钥。
+   放反任何一步立刻失败——这是非对称密码的两两互补。
+3. **信封闭环的双重验证**：`diff k` 证明「会话密钥正确交达对方」，
+   `cmp plain` 证明「明文内容到对方」。两处都一致才叫信封闭合（记录里两行 echo 都打出了）。
+4. 签名对象是密文 C 而非明文：Kerckhoffs 原则下签名不暴露明文内容，同时也防 C→P' 的
+   替换攻击。任务① 篡改负例（1.5/2.3）已验证：C 或 S1 任一被改，验签即失败。
